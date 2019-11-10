@@ -1,75 +1,65 @@
 ﻿using SimpleSchemaParser;
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace xsd2codemirror
-{
-  internal class ConsoleLogger : ILogger
-  {
-    private class ConsoleLoggerOutdenter : IDisposable
-    {
-      private readonly ConsoleLogger log;
-      internal ConsoleLoggerOutdenter(ConsoleLogger log)
-      {
-        this.log = log;
-      }
+namespace xsd2codemirror {
+	internal class ConsoleLogger: ILogger {
+		private class ConsoleLoggerOutdenter: IDisposable {
+			private readonly ConsoleLogger log;
 
-      void IDisposable.Dispose()
-      {
-        log.Outdent();
-      }
-    }
+			internal ConsoleLoggerOutdenter(ConsoleLogger log) {
+				this.log = log;
+			}
 
-    public ConsoleLogger()
-    {
-      this.outdenter = new ConsoleLoggerOutdenter(this);
-    }
+			void IDisposable.Dispose() {
+				log.Outdent();
+			}
+		}
 
-    private string indent = "";
-    private bool endOfLine = true;
-    private readonly IDisposable outdenter;
+		public ConsoleLogger() {
+			outdenter = new ConsoleLoggerOutdenter(this);
+		}
 
-    private ILogger WriteIndent()
-    {
-      Console.Write(indent);
-      endOfLine = false;
-      return this;
-    }
+		private string indent = "";
+		private bool endOfLine = true;
+		private readonly IDisposable outdenter;
 
-    public ILogger Write(string p, params object[] args)
-    {
-      if (endOfLine)
-        WriteIndent();
-      Console.Write(p, args);
-      return this;
-    }
+		private ILogger WriteIndent() {
+			Console.Write(indent);
+			endOfLine = false;
+			return this;
+		}
 
-    public ILogger WriteLine(string p, params object[] args)
-    {
-      Write(p, args);
-      WriteLine();
-      return this;
-    }
+		public ILogger Write(string p, params object[] args) {
+			if (endOfLine) {
+				WriteIndent();
+			}
+			Console.Write(p, args);
+			return this;
+		}
 
-    public ILogger WriteLine()
-    {
-      Console.WriteLine();
-      endOfLine = true;
-      return this;
-    }
+		public ILogger WriteLine(string p, params object[] args) {
+			Write(p, args);
+			WriteLine();
+			return this;
+		}
 
-    public IDisposable Indent()
-    {
-      indent += "  ";
-      return outdenter;
-    }
+		public ILogger WriteLine() {
+			Console.WriteLine();
+			endOfLine = true;
+			return this;
+		}
 
-    private void Outdent()
-    {
-      indent = indent.Substring(0, indent.Length - 2);
-    }
-  }
+		public IDisposable Indent() {
+			indent += "  ";
+			return outdenter;
+		}
 
+		private void Outdent() {
+			indent = indent.Substring(0, indent.Length-2);
+		}
+	}
 }

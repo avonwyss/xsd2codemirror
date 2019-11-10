@@ -12,6 +12,7 @@ TestResults
 *.suo
 *.user
 *.sln.docstates
+.vs/**
 
 # Build results
 [Dd]ebug/
@@ -89,8 +90,6 @@ csx
 AppPackages/
 
 # Others
-[Bb]in
-[Oo]bj
 sql
 TestResults
 [Tt]est[Rr]esult*
