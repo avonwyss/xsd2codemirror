@@ -1,45 +1,34 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Xml.Linq;
 
 namespace SimpleSchemaParser {
-	public class SimpleXmlElementRef {
-		public string Namespace {
-			get;
-			set;
+	public class SimpleXmlElement: SimpleXmlBase {
+		private readonly Dictionary<XName, SimpleXmlAttribute> attributes = new Dictionary<XName, SimpleXmlAttribute>();
+		private readonly HashSet<XName> children = new HashSet<XName>();
+
+		public SimpleXmlElement(XName name, bool isTopLevelElement): base(name) {
+			IsTopLevelElement = isTopLevelElement;
 		}
 
-		public string Name {
-			get;
-			set;
-		}
-	}
+		public ICollection<SimpleXmlAttribute> Attributes => attributes.Values;
 
-	public class SimpleXmlElement {
-		public string Namespace {
-			get;
-			set;
-		}
-
-		public string Name {
-			get;
-			set;
-		}
-
-		public IEnumerable<SimpleXmlAttribute> Attributes {
-			get;
-			set;
-		}
-
-		public IEnumerable<SimpleXmlElementRef> Children {
-			get;
-			set;
-		}
+		public ICollection<XName> Children => children;
 
 		public bool IsTopLevelElement {
 			get;
-			set;
+		}
+
+		public bool AddAttribute(SimpleXmlAttribute attribute) {
+			if (attributes.ContainsKey(attribute.Name)) {
+				return false;
+			}
+			attributes.Add(attribute.Name, attribute);
+			return true;
+		}
+
+		public bool AddChild(XName child) {
+			return children.Add(child);
 		}
 	}
 }

@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace SimpleSchemaParser {
 	public class CodeMirrorSchemaInfoSerializer {
@@ -46,19 +45,13 @@ namespace SimpleSchemaParser {
 			this.elements = elements;
 		}
 
-		public void SetPrefix(string @namespace, string prefix) {
-			NamespacePrefixes[@namespace] = prefix;
-		}
-
-		private Dictionary<string, string> NamespacePrefixes = new Dictionary<string, string>();
-
 		public string ToJsonString() {
 			using (var buffer = new StringWriter()) {
 				using (writer = new JsonTextWriter(buffer)) {
 					writer.Formatting = Pretty ? Formatting.Indented : Formatting.None;
 					writer.WriteStartObject();
 					WriteTopElements(elements.Where(e => e.IsTopLevelElement));
-					foreach (var element in elements) {
+					foreach (var element in elements.OrderByQualifiedName()) {
 						WriteElement(element);
 					}
 					writer.WriteEndObject();
@@ -67,57 +60,31 @@ namespace SimpleSchemaParser {
 			}
 		}
 
-		private string ToElementName(SimpleXmlElement element) {
-			if (string.IsNullOrEmpty(element.Namespace)) {
-				return element.Name;
-			}
-			return string.Format("{0}:{1}", GetPrefix(element.Namespace), element.Name);
-		}
-
-		private string ToElementName(SimpleXmlElementRef elementRef) {
-			if (string.IsNullOrEmpty(elementRef.Namespace)) {
-				return elementRef.Name;
-			}
-			return string.Format("{0}:{1}", GetPrefix(elementRef.Namespace), elementRef.Name);
-		}
-
-		private int nsCounter = 0;
-
-		private string GetPrefix(string ns) {
-			string prefix;
-			if (!NamespacePrefixes.TryGetValue(ns, out prefix)) {
-				prefix = "cmns"+nsCounter;
-				nsCounter++;
-				NamespacePrefixes.Add(ns, prefix);
-			}
-			return prefix;
-		}
-
 		private void WriteTopElements(IEnumerable<SimpleXmlElement> elements) {
 			if (!elements.Any()) {
 				return;
 			}
 			writer.WritePropertyName("!top");
 			writer.WriteStartArray();
-			foreach (var element in elements) {
-				writer.WriteValue(ToElementName(element));
+			foreach (var element in elements.OrderByQualifiedName()) {
+				writer.WriteValue(element.Name.ToString());
 			}
 			writer.WriteEndArray();
 		}
 
 		private void WriteElement(SimpleXmlElement element) {
-			writer.WritePropertyName(ToElementName(element));
+			writer.WritePropertyName(element.Name.ToString());
 			writer.WriteStartObject();
 			if (element.Attributes != null && element.Attributes.Any()) {
 				writer.WritePropertyName("attrs");
 				writer.WriteStartObject();
-				foreach (var attribute in element.Attributes) {
-					writer.WritePropertyName(attribute.Name);
+				foreach (var attribute in element.Attributes.OrderByQualifiedName()) {
+					writer.WritePropertyName(attribute.Name.ToString());
 					if (attribute.PossibleValues == null || !attribute.PossibleValues.Any()) {
 						writer.WriteNull();
 					} else {
 						writer.WriteStartArray();
-						foreach (var value in attribute.PossibleValues) {
+						foreach (var value in attribute.PossibleValues.OrderBy(v => v, StringComparer.InvariantCultureIgnoreCase)) {
 							writer.WriteValue(value);
 						}
 						writer.WriteEndArray();
@@ -128,8 +95,8 @@ namespace SimpleSchemaParser {
 			if (element.Children != null && element.Children.Any()) {
 				writer.WritePropertyName("children");
 				writer.WriteStartArray();
-				foreach (var child in element.Children) {
-					writer.WriteValue(ToElementName(child));
+				foreach (var child in element.Children.OrderBy(v => v.ToString(), StringComparer.Ordinal)) {
+					writer.WriteValue(child.ToString());
 				}
 				writer.WriteEndArray();
 			}

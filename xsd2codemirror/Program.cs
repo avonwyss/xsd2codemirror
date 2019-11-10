@@ -2,8 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace xsd2codemirror {
 	public static class Program {
@@ -19,24 +17,6 @@ namespace xsd2codemirror {
 				verbose = true;
 				argsList.RemoveAll(s => s == "-v" || s == "-verbose");
 			}
-			var namespacePrefixes = new Dictionary<string, string>();
-			int index;
-			while ((index = argsList.IndexOf("-prefix")) != -1) {
-				argsList.RemoveAt(index);
-				if (argsList.Count <= index) {
-					Usage();
-					return;
-				}
-				var prefix = argsList[index];
-				argsList.RemoveAt(index);
-				if (argsList.Count <= index) {
-					Usage();
-					return;
-				}
-				var @namespace = argsList[index];
-				argsList.RemoveAt(index);
-				namespacePrefixes[@namespace] = prefix;
-			}
 			if (argsList.Count != 1) {
 				Usage();
 				return;
@@ -50,9 +30,6 @@ namespace xsd2codemirror {
 				var elements = parser.GetXmlElements();
 				var serializer = new CodeMirrorSchemaInfoSerializer(elements);
 				serializer.Pretty = true;
-				foreach (var nsPr in namespacePrefixes) {
-					serializer.SetPrefix(nsPr.Key, nsPr.Value);
-				}
 				var json = serializer.ToJsonString();
 				Console.WriteLine(json);
 			} catch (Exception e) {

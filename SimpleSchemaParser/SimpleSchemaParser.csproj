@@ -48,11 +48,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CodeMirrorSchemaInfoSerializer.cs" />
+    <Compile Include="Extensions.cs" />
     <Compile Include="ILogger.cs" />
     <Compile Include="NullLogger.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SchemaParser.cs" />
     <Compile Include="SimpleXmlAttribute.cs" />
+    <Compile Include="SimpleXmlBase.cs" />
     <Compile Include="SimpleXmlElement.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -1,23 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Xml.Linq;
 
 namespace SimpleSchemaParser {
-	public class SimpleXmlAttribute {
-		public string Namespace {
-			get;
-			set;
-		}
+	public class SimpleXmlAttribute: SimpleXmlBase {
+		private readonly HashSet<string> possibleValues = new HashSet<string>();
 
-		public string Name {
-			get;
-			set;
-		}
+		public SimpleXmlAttribute(XName name): base(name) { }
 
-		public IEnumerable<string> PossibleValues {
-			get;
-			set;
+		public ICollection<string> PossibleValues => possibleValues;
+
+		public bool AddPossibleValue(string possibleValue) {
+			return possibleValues.Add(possibleValue);
 		}
 	}
 }

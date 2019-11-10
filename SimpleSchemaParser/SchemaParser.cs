@@ -1,11 +1,9 @@
 ﻿using System;
-using System.Linq;
 using System.Collections.Generic;
-using System.Text;
-using System.Xml.Schema;
 using System.IO;
-using System.Collections;
-using System.Xml;
+using System.Linq;
+using System.Xml.Linq;
+using System.Xml.Schema;
 
 namespace SimpleSchemaParser {
 	/// <summary>
@@ -17,11 +15,16 @@ namespace SimpleSchemaParser {
 	/// element will be output, other occurences will be ignored.
 	/// </summary>
 	public class SchemaParser {
-		private XmlSchemaSet schemaSet;
+		private readonly Dictionary<XName, SimpleXmlElement> elements = new Dictionary<XName, SimpleXmlElement>();
 
-		private string schemaPath;
+		private readonly string schemaPath;
 
 		private ILogger log = NullLogger.Instance;
+		private XmlSchemaSet schemaSet;
+
+		public SchemaParser(string schemaPath) {
+			this.schemaPath = schemaPath;
+		}
 
 		public ILogger Logger {
 			get => log;
@@ -31,10 +34,6 @@ namespace SimpleSchemaParser {
 		public string TargetNamespace {
 			get;
 			set;
-		}
-
-		public SchemaParser(string schemaPath) {
-			this.schemaPath = schemaPath;
 		}
 
 		/// <summary>
@@ -56,117 +55,6 @@ namespace SimpleSchemaParser {
 			}
 		}
 
-		public IEnumerable<SimpleXmlElement> GetXmlElements() {
-			if (schemaSet == null) {
-				throw new InvalidOperationException("Schema is not compiled yet.");
-			}
-			foreach (XmlSchemaElement particle in schemaSet.GlobalElements.Values) {
-				ParseElement((XmlSchemaElement)particle, true);
-			}
-			List<RecursiveChildren> allDependencies = null;
-			for (var i = 0; i < 100; i++) {
-				allDependencies = elements.Values.Select(temp => temp.children).Distinct().Where(ch => ch != null && ch.dependencies.Count > 0).OrderBy(ch => ch.dependencies.Count).ToList();
-				if (!allDependencies.Any()) {
-					break;
-				}
-				foreach (var ch in allDependencies) {
-					foreach (var dep in ch.dependencies.ToList()) {
-						if (dep.Value.NoDependenciesLeft) {
-							ch.children = ch.children.Concat(dep.Value.children).Distinct().ToList();
-							ch.dependencies.Remove(dep.Key);
-						}
-					}
-				}
-			}
-			if (allDependencies.Any()) {
-				throw new InvalidOperationException("There is a cycle in the schema, can't figure it out: "+string.Join(", ", allDependencies.Select(dep => GetParticleDesc(dep.group)).ToArray()));
-			}
-			foreach (var temp in elements) {
-				if (temp.Value.children != null) {
-					temp.Value.element.Children = temp.Value.children.children.Select(qn => new SimpleXmlElementRef {Name = qn.Name, Namespace = qn.Namespace}).ToList();
-				}
-			}
-			return elements.Values.Select(temp => temp.element);
-		}
-
-		private class TempXmlElement {
-			public SimpleXmlElement element;
-			public RecursiveChildren children;
-		}
-
-		private Dictionary<XmlSchemaElement, TempXmlElement> elements = new Dictionary<XmlSchemaElement, TempXmlElement>();
-
-		private XmlQualifiedName ParseElement(XmlSchemaElement element, bool isTopLevel = false) {
-			log.WriteLine("Found element {0}", GetParticleDesc(element));
-			if (element.RefName != null && !element.RefName.IsEmpty) {
-				return element.RefName;
-			}
-			TempXmlElement tempXmlElement;
-			if (elements.TryGetValue(element, out tempXmlElement)) {
-				// TODO detect real equals or conflict, if conflict merge
-				return element.QualifiedName;
-			}
-			tempXmlElement = new TempXmlElement();
-			tempXmlElement.element = new SimpleXmlElement();
-			tempXmlElement.element.Name = element.QualifiedName.Name;
-			tempXmlElement.element.Namespace = element.QualifiedName.Namespace;
-			tempXmlElement.element.IsTopLevelElement = isTopLevel;
-			elements.Add(element, tempXmlElement);
-			var attributes = new List<SimpleXmlAttribute>();
-
-			// if the element is a simple type, it cannot have attributes of children, thus ignore it
-			// if the element is a complex type, we'll parse it.
-			if (element.ElementSchemaType is XmlSchemaComplexType) {
-				var type = (XmlSchemaComplexType)element.ElementSchemaType;
-				using (log.Indent()) {
-					log.WriteLine("Attributes");
-					using (log.Indent()) {
-						foreach (XmlSchemaAttribute attribute in type.AttributeUses.Values) {
-							attributes.Add(ParseAttribute(attribute));
-							log.WriteLine("{0}", attribute.QualifiedName.Name);
-						}
-					}
-					var particle = type.ContentTypeParticle;
-					if (particle != null) {
-						log.WriteLine("Child Particle {0}", GetParticleDesc(particle));
-						using (log.Indent()) {
-							if (particle is XmlSchemaGroupRef) {
-								tempXmlElement.children = ParseGoupRef((XmlSchemaGroupRef)particle);
-							} else if (particle is XmlSchemaGroupBase) {
-								tempXmlElement.children = ParseGroupBase((XmlSchemaGroupBase)particle);
-							} else if (particle.GetType().Name == "EmptyParticle") { } else {
-								throw new NotImplementedException(particle.GetType().Name);
-							}
-						}
-					}
-				}
-			}
-			tempXmlElement.element.Attributes = attributes;
-
-			// TODO merge attrs and children on conflicts
-			return element.QualifiedName;
-		}
-
-		private SimpleXmlAttribute ParseAttribute(XmlSchemaAttribute attribute) {
-			var simpleAttribute = new SimpleXmlAttribute();
-			simpleAttribute.Name = attribute.QualifiedName.Name;
-			simpleAttribute.Namespace = attribute.QualifiedName.Namespace;
-			var type = attribute.AttributeSchemaType;
-			var possibleValues = new List<string>();
-			if (type != null && type.Content is XmlSchemaSimpleTypeRestriction) {
-				var restriction = (XmlSchemaSimpleTypeRestriction)type.Content;
-				foreach (var facet in restriction.Facets) {
-					if (facet is XmlSchemaEnumerationFacet) {
-						possibleValues.Add(((XmlSchemaEnumerationFacet)facet).Value);
-					}
-				}
-			}
-			if (possibleValues.Count > 0) {
-				simpleAttribute.PossibleValues = possibleValues;
-			}
-			return simpleAttribute;
-		}
-
 		private string GetParticleDesc(XmlSchemaParticle particle) {
 			var desc = particle.GetType().Name.Replace("XmlSchema", "");
 			if (particle is XmlSchemaElement) {
@@ -183,30 +71,72 @@ namespace SimpleSchemaParser {
 			}
 		}
 
-		/// <summary>
-		/// Parses xs:group ref="..." elements in the schema
-		/// </summary>
-		/// <param name="groupRef"></param>
-		/// <returns></returns>
-		private RecursiveChildren ParseGoupRef(XmlSchemaGroupRef groupRef) {
-			log.WriteLine("Parsing groupRef {0}", groupRef.RefName);
-			using (log.Indent()) {
-				return ParseGroupBase(groupRef.Particle);
+		public IEnumerable<SimpleXmlElement> GetXmlElements() {
+			if (schemaSet == null) {
+				throw new InvalidOperationException("Schema is not compiled yet.");
 			}
+			Queue<XmlSchemaElement> pending = new Queue<XmlSchemaElement>(schemaSet.GlobalElements.Values.Cast<XmlSchemaElement>());
+			int topLevelCount = pending.Count;
+			while (pending.Count > 0) {
+				var schemaElement = pending.Dequeue();
+				if (!elements.ContainsKey(schemaElement.QualifiedName.ToXName())) {
+					var isTopLevelElement = elements.Count < topLevelCount;
+					var element = ParseElement(schemaElement, isTopLevelElement, pending);
+					elements.Add(element.Name, element);
+				}
+			}
+			return elements.Values;
 		}
 
-		private Dictionary<XmlSchemaGroupBase, RecursiveChildren> groupCache = new Dictionary<XmlSchemaGroupBase, RecursiveChildren>();
-
-		private class RecursiveChildren {
-			public readonly XmlSchemaGroupBase group;
-
-			public RecursiveChildren(XmlSchemaGroupBase group) {
-				this.group = group;
+		private SimpleXmlElement ParseElement(XmlSchemaElement schemaElement, bool isTopLevelElement, Queue<XmlSchemaElement> pending) {
+			var element = new SimpleXmlElement(schemaElement.QualifiedName.ToXName(), isTopLevelElement);
+			if (schemaElement.ElementSchemaType is XmlSchemaComplexType type) {
+				using (log.Indent()) {
+					log.WriteLine("Attributes");
+					using (log.Indent()) {
+						foreach (XmlSchemaAttribute attribute in type.AttributeUses.Values) {
+							element.AddAttribute(ParseAttribute(attribute));
+							log.WriteLine("{0}", attribute.QualifiedName.Name);
+						}
+					}
+					var particle = type.ContentTypeParticle;
+					if (particle != null) {
+						log.WriteLine("Child Particle {0}", GetParticleDesc(particle));
+						using (log.Indent()) {
+							switch (particle) {
+							case XmlSchemaGroupRef _:
+							case XmlSchemaGroupBase _:
+								foreach (var childSchemaElement in ParseGroupBase((particle as XmlSchemaGroupBase) ?? ((XmlSchemaGroupRef)particle).Particle)) {
+									pending.Enqueue(childSchemaElement);
+									element.Children.Add(childSchemaElement.QualifiedName.ToXName());
+								}
+								break;
+							default: {
+								if (particle.GetType().Name != "EmptyParticle") {
+									throw new NotImplementedException(particle.GetType().Name);
+								}
+								break;
+							}
+							}
+						}
+					}
+				}
 			}
+			return element;
+		}
 
-			public Dictionary<XmlSchemaGroupBase, RecursiveChildren> dependencies = new Dictionary<XmlSchemaGroupBase, RecursiveChildren>();
-			public List<XmlQualifiedName> children = new List<XmlQualifiedName>();
-			public bool NoDependenciesLeft => dependencies.Count == 0;
+		private SimpleXmlAttribute ParseAttribute(XmlSchemaAttribute attribute) {
+			var simpleAttribute = new SimpleXmlAttribute(attribute.QualifiedName.ToXName());
+			var type = attribute.AttributeSchemaType;
+			if (type != null && type.Content is XmlSchemaSimpleTypeRestriction) {
+				var restriction = (XmlSchemaSimpleTypeRestriction)type.Content;
+				foreach (var facet in restriction.Facets) {
+					if (facet is XmlSchemaEnumerationFacet) {
+						simpleAttribute.AddPossibleValue(((XmlSchemaEnumerationFacet)facet).Value);
+					}
+				}
+			}
+			return simpleAttribute;
 		}
 
 		/// <summary>
@@ -214,28 +144,48 @@ namespace SimpleSchemaParser {
 		/// </summary>
 		/// <param name="group"></param>
 		/// <returns>A list of direct children elements references</returns>
-		private RecursiveChildren ParseGroupBase(XmlSchemaGroupBase group) {
-			RecursiveChildren result;
-			if (groupCache.TryGetValue(group, out result)) {
-				log.WriteLine("Used cache: {0}", GetParticleDesc(group));
-				return result;
-			}
+		private IEnumerable<XmlSchemaElement> ParseGroupBase(XmlSchemaGroupBase group) {
 			log.WriteLine("Parsing group {0}", GetParticleDesc(group));
-			result = new RecursiveChildren(group);
-			groupCache.Add(group, result);
-			foreach (XmlSchemaParticle particle in group.Items) {
-				using (log.Indent()) {
-					if (particle is XmlSchemaGroupBase) {
-						var subGroup = (XmlSchemaGroupBase)particle;
-						result.dependencies.Add(subGroup, ParseGroupBase(subGroup));
-					} else if (particle is XmlSchemaElement) {
-						result.children.Add(ParseElement((XmlSchemaElement)particle));
-					} else if (particle is XmlSchemaAny) { } else {
+			using (log.Indent()) {
+				return ParseGroupBaseInternal(group, new HashSet<XmlSchemaGroupBase>());
+			}
+		}
+
+		private IEnumerable<XmlSchemaElement> ParseGroupBaseInternal(XmlSchemaGroupBase group, HashSet<XmlSchemaGroupBase> processed) {
+			if (!processed.Add(@group)) {
+				yield break;
+			}
+			using (log.Indent()) {
+				foreach (var particle in @group.Items) {
+					switch (particle) {
+					case XmlSchemaGroupBase subGroup: {
+						foreach (var result in ParseGroupBaseInternal(subGroup, processed)) {
+							yield return result;
+						}
+						break;
+					}
+					case XmlSchemaElement element:
+						yield return element;
+						break;
+					case XmlSchemaAny _:
+						break;
+					default:
 						throw new NotImplementedException(particle.GetType().Name);
 					}
 				}
 			}
-			return result;
+		}
+
+		/// <summary>
+		/// Parses xs:group ref="..." elements in the schema
+		/// </summary>
+		/// <param name="groupRef"></param>
+		/// <returns></returns>
+		private IEnumerable<XmlSchemaElement> ParseGroupRef(XmlSchemaGroupRef groupRef) {
+			log.WriteLine("Parsing groupRef {0}", groupRef.RefName);
+			using (log.Indent()) {
+				return ParseGroupBase(groupRef.Particle);
+			}
 		}
 	}
 }
